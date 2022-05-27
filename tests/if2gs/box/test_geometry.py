@@ -44,41 +44,45 @@ def test_geometry(request, monkeypatch):
     main_obj = {
         'metadata': {
             'run': {
-                'factory': 'geo',
-                "strategy": {
-                    "class": "strategy.Base",
-                    "zone_function": {
-                        "class": "zone.Block",
-                        "dims": [3]}},
                 # 'factory': 'geo',
-                # "options": {
-                #     "Mesh.Algorithm": 6,
-                #     "Mesh.Algorithm3D": 1,
-                #     "Mesh.MeshSizeFactor": 1,
-                #     "Mesh.MeshSizeMin": 0,
-                #     "Mesh.MeshSizeMax": 1e22,
-                #     "Mesh.MeshSizeFromPoints": 0,
-                #     "Mesh.MeshSizeFromParametricPoints": 0,
-                #     "Mesh.MeshSizeExtendFromBoundary": 0,
-                #     "Mesh.MeshSizeFromCurvature": 42,
-                #     "Mesh.MeshSizeFromCurvatureIsotropic": 0,
-                #     "Mesh.MinimumLineNodes": 2,
-                #     "Mesh.MinimumCircleNodes": 3,
-                #     "Mesh.MinimumCurveNodes": 3
-                # }
+                # "strategy": {
+                #     "class": "strategy.Base",
+                #     "zone_function": {
+                #         "class": "zone.Block",
+                #         "dims": [3]}},
+                'factory': 'occ',
+                "options": {
+                    "Mesh.Algorithm": 6,
+                    "Mesh.Algorithm3D": 1,
+                    "Mesh.MeshSizeFactor": 1,
+                    "Mesh.MeshSizeMin": 0,
+                    "Mesh.MeshSizeMax": 1e3,
+                    "Mesh.MeshSizeFromPoints": 0,
+                    "Mesh.MeshSizeFromParametricPoints": 0,
+                    "Mesh.MeshSizeExtendFromBoundary": 0,
+                    "Mesh.MeshSizeFromCurvature": 42,
+                    "Mesh.MeshSizeFromCurvatureIsotropic": 0,
+                    "Mesh.MinimumLineNodes": 2,
+                    "Mesh.MinimumCircleNodes": 3,
+                    "Mesh.MinimumCurveNodes": 3
+                }
             }},
         'data': {'class': 'block.Block',
                  'do_register': False,
                  'children': [],
                  'children_transforms': []}}
     id2file = {}
-    # allowed_items = {103997, 106221}
     allowed_items = {}
+    # allowed_items = {103997, 106221}
+    # 282327
     # 103997 pipe
     # 163899 cap
     # 135885 cylinder
     # 108452 outer elbow
     # 106221 inner elbow
+    # allowed_items = {106221, 108452}
+    # allowed_items = {135885, 163899}
+    # allowed_items = {163899}
     # small blocks 21222 21310, 21398 21486
     # big block 15847
     # bottom plate 16023, 15935
@@ -104,15 +108,19 @@ def test_geometry(request, monkeypatch):
             points_old2new = {}
             polygons = []
             for f in item.Outer.CfsFaces:  # IfcFace
-                for b in f.Bounds:  # IfcFaceOuterBound
-                    polygon = []
+                polygon = []
+                for b in f.Bounds:  # IfcFaceOuterBound, IfcFaceBound
+                    loop = []
                     for point in b.Bound.Polygon:  # IfcPolyLoop
                         new_id = points_old2new.setdefault(
                             point.id(), len(points_old2new))
-                        polygon.append(new_id)
+                        loop.append(new_id)
                         points_coordinates.setdefault(
                             new_id, list(point.Coordinates))
-                    polygons.append(polygon)
+                    polygon.append(loop)
+                if len(polygon) == 1:
+                    polygon = polygon[0]
+                polygons.append(polygon)
             n_points = len(points_coordinates)
             gmsh_obj['data']['polygons'] = polygons
             gmsh_obj['data']['points'] = [points_coordinates[x]
