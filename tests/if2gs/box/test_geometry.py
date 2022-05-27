@@ -1,62 +1,17 @@
-from collections import Counter, deque
+from collections import Counter
 from pprint import pprint
 import json
+from pathlib import Path
+import numpy as np
 
 import ifcopenshell
-import gmsh
-
-
-def polyloops_to_volume(outer, points_tags, curves_pairs, surfaces_curves):
-    print(outer.is_a())
-    ss = []
-    print(len(outer.CfsFaces))
-    for fi, f in enumerate(outer.CfsFaces):
-        # print(f)
-        polyloops = [x.Bound for x in f.Bounds]
-        n_duplicated_pairs = 0
-        n_reversed_pairs = 0
-        # curve_loops_tags = set()
-        # print(len(polyloops))
-        for pl in polyloops:
-            pg = pl.Polygon
-            tags = deque()
-            curve_tags = []
-            for i, p in enumerate(pg):
-                # print(p.get_info())
-                cs = p.Coordinates
-                tag = p.id()
-                tags.append(tag)
-                # print(dir(p))
-                if tag not in points_tags:
-                    points_tags.add(tag)
-                    gmsh.model.geo.addPoint(x=cs[0], y=cs[1], z=cs[2], tag=tag)
-            for _ in range(len(tags)):
-                pair, rev_pair = (tags[0], tags[1]), (tags[1], tags[0])
-                if pair in curves_pairs:
-                    lt = curves_pairs[pair]
-                    n_duplicated_pairs += 1
-                elif rev_pair in curves_pairs:
-                    lt = -curves_pairs[rev_pair]
-                    n_reversed_pairs += 1
-                else:
-                    lt = gmsh.model.geo.addLine(startTag=pair[0], endTag=pair[1])
-                    curves_pairs[pair] = lt
-                curve_tags.append(lt)
-                tags.rotate(-1)
-            clt = gmsh.model.geo.addCurveLoop(curveTags=curve_tags)
-            st = gmsh.model.geo.addPlaneSurface(wireTags=[clt])
-            ss.append(st)
-    slt = gmsh.model.geo.addSurfaceLoop(ss, outer.id())
-    vt = gmsh.model.geo.addVolume([slt], outer.id())
-    gmsh.model.geo.synchronize()
-    gmsh.model.addPhysicalGroup(2, ss, name=f"S{outer.id()}")
-    gmsh.model.addPhysicalGroup(3, [vt], name=f"V{outer.id()}")
+from ifcopenshell.util.placement import get_local_placement, get_axis2placement
 
 
 def test_geometry(request, monkeypatch):
     monkeypatch.chdir(request.fspath.dirname)
 
-    ifc = ifcopenshell.open('box.ifc')
+    ifc = ifcopenshell.open('box_2.ifc')
     owner_history = ifc.by_type("IfcOwnerHistory")[0]
     project = ifc.by_type("IfcProject")[0]
     context = ifc.by_type("IfcGeometricRepresentationContext")[0]
@@ -67,61 +22,201 @@ def test_geometry(request, monkeypatch):
     shapes = ifc.by_type('IfcShapeRepresentation')
     print(f'shapes: {len(shapes)}')
     pprint(Counter([x.RepresentationIdentifier for x in shapes]))
-    pprint(Counter([x.RepresentationType for x in shapes]))
+    pprint(Counter([y.is_a() for x in shapes for y in x.Items]))
     pprint(Counter([x.is_a() for x in products]))
+    transformations = ifc.by_type('IfcGeometricRepresentationItem')
+    # pprint([(x.get_info(), ifc.get_inverse(x))
+    #         for x in ifc.by_type('IfcAxis2Placement3D')
+    #         if x.Location.Coordinates != (0, 0, 0)])
+    pprint(Counter([x.is_a() for x in transformations]))
+    # pprint(Counter([x.is_a() for x in transformations]))
 
-    gmsh.initialize()
-    gmsh.model.add("box")
-    points_tags = set()
-    curves_points = dict()
-    surfaces_curves = dict()
-    # for i, shape in enumerate(shapes):
-    #     print(f'\n{i + 1}. {shape.RepresentationType}')
-    #     if shape.RepresentationType == 'Brep':
-    #         pass
-    #         # print(shape.get_info())
-    #         # for item in shape.Items:  # IfcFacetedBrep
-    #         #     # print(item.get_info())
-    #         #     polyloops_to_volume(item.Outer, points_tags,
-    #         #                         curves_points, surfaces_curves)
-    #     elif shape.RepresentationType == 'SweptSolid':
-    #         pass
-    #         # print(shape.get_info())
-    #         # for item in shape.Items:  # IfcExtrudedAreaSolid
-    #         #     if item.is_a('IfcExtrudedAreaSolid'):
-    #         #         if item.SweptArea.is_a('IfcCircleHollowProfileDef'):
-    #         #             print(item.get_info())
-    #         #             print(item.SweptArea.get_info())
-    #         #             r1 = item.SweptArea.Radius
-    #         #             r2 = item.SweptArea.Radius + item.SweptArea.WallThickness
-    #         #             h = item.Depth
-    #         #             z1, z2 = f"V{item.id()}_1", f"V{item.id()}_2"
-    #         #             gs_input = {
-    #         #                 "data": {
-    #         #                     "class": "block.Layer",
-    #         #                     "layer": [[r1, r2], [h]],
-    #         #                     "layer_curves": [["circle_arc", "circle_arc"], ["line"]],
-    #         #                     "items_zone": [z1, z2],
-    #         #                     "items_boolean_level_map": 0,
-    #         #                     "transforms": [[0, 0, 0]]}}
-    #         #             with open(f'V{item.id()}.json', 'w') as f:
-    #         #                 json.dump(gs_input, f, indent=2)
-    #     elif shape.RepresentationType == 'MappedRepresentation':
-    #         print(shape.get_info())
-    #         pprint([x.get_info() for x in ifc.get_inverse(shape)])
-    #         # for item in shape.Items:  # IfcExtrudedAreaSolid
-    #         #     print(item.get_info())
-    #         #     print(item.MappingSource.get_info())
-    #         #     print(item.MappingSource.MappedRepresentation.get_info())
-    #     elif shape.RepresentationType == 'GeometricCurveSet':
-    #         pass
-    #         # print(shape.get_info())
-    #         # pprint([x.get_info() for x in ifc.get_inverse(shape)])
-    #         # for item in shape.Items:  # IfcGeometricCurveSet
-    #         #     print(item.get_info())
-    #         #     for element in item.Elements:
-    #         #         print(element.get_info())
-    gmsh.model.geo.synchronize()
-    gmsh.write("box.geo_unrolled")
-    gmsh.finalize()
+    structure = {}
 
+    for i, shape in enumerate(shapes):
+        # print(f'\n{i + 1}. {shape.RepresentationType}')
+        structure.setdefault(shape.RepresentationType, []).append(shape)
+    # pprint(structure)
+    pprint({k: len(v) for k, v in structure.items()})
+    gmsh_dir = 'gmsh'
+    gmsh_path = Path(gmsh_dir)
+    gmsh_path.mkdir(exist_ok=True, parents=True)
+    main_obj = {
+        'metadata': {
+            'run': {
+                'factory': 'geo',
+                "strategy": {
+                    "class": "strategy.Base",
+                    "zone_function": {
+                        "class": "zone.Block",
+                        "dims": [3]}},
+                # 'factory': 'geo',
+                # "options": {
+                #     "Mesh.Algorithm": 6,
+                #     "Mesh.Algorithm3D": 1,
+                #     "Mesh.MeshSizeFactor": 1,
+                #     "Mesh.MeshSizeMin": 0,
+                #     "Mesh.MeshSizeMax": 1e22,
+                #     "Mesh.MeshSizeFromPoints": 0,
+                #     "Mesh.MeshSizeFromParametricPoints": 0,
+                #     "Mesh.MeshSizeExtendFromBoundary": 0,
+                #     "Mesh.MeshSizeFromCurvature": 42,
+                #     "Mesh.MeshSizeFromCurvatureIsotropic": 0,
+                #     "Mesh.MinimumLineNodes": 2,
+                #     "Mesh.MinimumCircleNodes": 3,
+                #     "Mesh.MinimumCurveNodes": 3
+                # }
+            }},
+        'data': {'class': 'block.Block',
+                 'do_register': False,
+                 'children': [],
+                 'children_transforms': []}}
+    id2file = {}
+    # allowed_items = {103997, 106221}
+    allowed_items = {}
+    # 103997 pipe
+    # 163899 cap
+    # 135885 cylinder
+    # 108452 outer elbow
+    # 106221 inner elbow
+    # small blocks 21222 21310, 21398 21486
+    # big block 15847
+    # bottom plate 16023, 15935
+    # allowed_items = {21222, 21310, 15847, 135885, 16023}
+    # allowed_items = {21222, 21310, 15847, 135885, 16023,
+    #                  21398,
+    #                  21486,
+    #                  15935}
+    # allowed_items = {163899, 135885}
+    # allowed_items = {108452, 106221}
+    for shape in structure['Brep']:
+        for i, item in enumerate(shape.Items):  # IfcFacetedBrep
+            item_id = item.id()
+            if item_id not in allowed_items and len(allowed_items) != 0:
+                continue
+            gmsh_file = f'{item_id}.json'
+            id2file[item_id] = gmsh_file
+            # zone = f'V{item_id}'
+            zone = f'IfcFacetedBrep.{item_id}'
+            gmsh_obj = {
+                'data': {'class': 'block.Polyhedron', 'zone': zone}}
+            points_coordinates = {}
+            points_old2new = {}
+            polygons = []
+            for f in item.Outer.CfsFaces:  # IfcFace
+                for b in f.Bounds:  # IfcFaceOuterBound
+                    polygon = []
+                    for point in b.Bound.Polygon:  # IfcPolyLoop
+                        new_id = points_old2new.setdefault(
+                            point.id(), len(points_old2new))
+                        polygon.append(new_id)
+                        points_coordinates.setdefault(
+                            new_id, list(point.Coordinates))
+                    polygons.append(polygon)
+            n_points = len(points_coordinates)
+            gmsh_obj['data']['polygons'] = polygons
+            gmsh_obj['data']['points'] = [points_coordinates[x]
+                                          for x in range(n_points)]
+            with open(gmsh_path / gmsh_file, 'w') as f:
+                json.dump(gmsh_obj, f)
+    for shape in structure['SweptSolid']:
+        for item in shape.Items:
+            item_id = item.id()
+            if item_id not in allowed_items and len(allowed_items) != 0:
+                continue
+            gmsh_file = f'{item_id}.json'
+            if item.is_a('IfcExtrudedAreaSolid'):
+                if item.SweptArea.is_a('IfcCircleHollowProfileDef'):
+                    id2file[item_id] = gmsh_file
+                    direction = item.ExtrudedDirection.DirectionRatios
+                    assert direction == (0., 0., 1.)
+                    r1 = item.SweptArea.Radius - item.SweptArea.WallThickness
+                    r2 = item.SweptArea.Radius
+                    h = item.Depth
+                    # items_zone = [f"V{item_id}", f"V{item_id}"]
+                    items_zone = [f'IfcCircleHollowProfileDef.{item_id}']
+                    gmsh_object = {
+                        "data": {
+                            "class": "block.Layer",
+                            "layer": [[r1, r2], [h]],
+                            "layer_curves": [["circle_arc", "circle_arc"],
+                                             ["line"]],
+                            "items_zone": items_zone,
+                            "items_do_register_map": [0, 1],
+                            "items_boolean_level_map": 0}}
+                    with open(gmsh_path / gmsh_file, 'w') as f:
+                        json.dump(gmsh_object, f)
+                elif item.SweptArea.is_a('IfcRectangleProfileDef'):
+                    id2file[item_id] = gmsh_file
+                    direction = item.ExtrudedDirection.DirectionRatios
+                    assert direction == (0., 0., 1.)
+                    dx = item.SweptArea.XDim
+                    dy = item.SweptArea.YDim
+                    dz = item.Depth
+                    hx, hy = 0.5 * dx, 0.5 * dy
+                    points = [
+                        [hx, hy, 0], [-hx, hy, 0], [-hx, -hy, 0], [hx, -hy, 0],
+                        [hx, hy, dz], [-hx, hy, dz], [-hx, -hy, dz], [hx, -hy, dz],
+                    ]
+                    # zone = f"V{shape_id}"
+                    zone = f'IfcRectangleProfileDef.{item_id}'
+                    gmsh_object = {
+                        "data": {
+                            "class": "block.Block",
+                            "zone": zone,
+                            "points": points,
+                            "boolean_level": 0}}
+                    with open(gmsh_path / gmsh_file, 'w') as f:
+                        json.dump(gmsh_object, f)
+                elif item.SweptArea.is_a('IfcCircleProfileDef'):
+                    id2file[item_id] = gmsh_file
+                    direction = item.ExtrudedDirection.DirectionRatios
+                    assert direction == (0., 0., 1.)
+                    r = item.SweptArea.Radius
+                    h = item.Depth
+                    items_zone = [f'items_zone.{item_id}']
+                    gmsh_object = {
+                        "data": {
+                            "class": "block.Layer",
+                            "layer": [[r], [h]],
+                            "layer_curves": [["circle_arc"], ["line"]],
+                            "items_zone": items_zone,
+                            "items_boolean_level_map": 0}}
+                    with open(gmsh_path / gmsh_file, 'w') as f:
+                        json.dump(gmsh_object, f)
+                else:
+                    raise NotImplementedError(item.SweptArea.get_info())
+            else:
+                raise NotImplementedError(item.get_info())
+    for product in products:
+        if product.Name == 'Default Grid':
+            continue
+        placement = product.ObjectPlacement
+        placement_matrix = get_local_placement(placement)
+        product_representation = product.Representation
+        if product_representation is not None:
+            assert len(product_representation.Representations) == 1
+            for r in product_representation.Representations:
+                assert len(r.Items) == 1
+                for i in r.Items:
+                    target = i.MappingTarget
+                    source = i.MappingSource
+                    source_representation = source.MappedRepresentation
+                    for item in source_representation.Items:
+                        item_id = item.id()
+                        if item_id not in allowed_items and len(allowed_items) != 0:
+                            continue
+                        gmsh_file = id2file[item_id]
+                        if source_representation.RepresentationType in ['SweptSolid']:
+                            m = get_axis2placement(
+                                source.MappedRepresentation.Items[0].Position)
+                            new_pos = np.dot(placement_matrix, m)
+                            transforms = [new_pos.tolist()]
+                        elif source_representation.RepresentationType in ['Brep']:
+                            transforms = [placement_matrix.tolist()]
+                        else:
+                            transforms = []
+                        main_obj['data']['children'].append('/' + gmsh_file)
+                        main_obj['data']['children_transforms'].append(transforms)
+    with open(gmsh_path / 'main.json', 'w') as f:
+        json.dump(main_obj, f, indent=2)

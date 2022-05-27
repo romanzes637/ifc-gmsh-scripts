@@ -8,7 +8,7 @@ def test_properties(request, monkeypatch):
     # https://thinkmoult.com/using-ifcopenshell-parse-ifc-files-python.html
     # https://wiki.osarch.org/index.php?title=IfcOpenShell_code_examples
     # https://community.osarch.org/discussion/711/ifcopenshell-how-to-add-a-new-property-and-value-to-an-object
-    ifc = ifcopenshell.open('box.ifc')
+    ifc = ifcopenshell.open('box_2.ifc')
     owner_history = ifc.by_type("IfcOwnerHistory")[0]
     project = ifc.by_type("IfcProject")[0]
     context = ifc.by_type("IfcGeometricRepresentationContext")[0]
@@ -101,12 +101,20 @@ def test_properties(request, monkeypatch):
 
     ifc = ifcopenshell.open('box_with_properties.ifc')
     products = ifc.by_type('IfcProduct')
-    for product in products[:2]:
-        print(product.get_info())
-        for x in product.IsDefinedBy:
-            if x.RelatingPropertyDefinition.is_a('IfcElementQuantity'):
-                for y in x.RelatingPropertyDefinition.Quantities:
-                    pprint(y.get_info())
-            elif x.RelatingPropertyDefinition.is_a('IfcPropertySet'):
-                for y in x.RelatingPropertyDefinition.HasProperties:
-                    pprint(y.get_info())
+    cnt = 0
+    for product in products:
+        if product.GlobalId == '2wGebYoZr8CujW8_P1W8tC':
+            print(product.get_info())
+            for x in product.IsDefinedBy:
+                if hasattr(x, 'RelatingPropertyDefinition'):
+                    # if x.RelatingPropertyDefinition.is_a('IfcElementQuantity'):
+                    #     print()
+                    #     pprint(x.RelatingPropertyDefinition.Name)
+                    #     for y in x.RelatingPropertyDefinition.Quantities:
+                    #         pprint(y.Name)
+                    if x.RelatingPropertyDefinition.is_a('IfcPropertySet'):
+                        cnt += 1
+                        print()
+                        pprint(f'{cnt}. {x.RelatingPropertyDefinition.Name}')
+                        for y in x.RelatingPropertyDefinition.HasProperties:
+                            pprint(y.get_info())
