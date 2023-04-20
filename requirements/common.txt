@@ -1,1 +1,1 @@
-python-ifcopenshell
+ifcopenshell
