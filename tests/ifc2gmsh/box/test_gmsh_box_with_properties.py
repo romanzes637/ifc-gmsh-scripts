@@ -1,4 +1,4 @@
-from ifc2gmsh.main import main
+from ifc2gmsh.properties import main
 
 
 def test_fenia_box_with_properties(box_props_path='box_with_properties.ifc',
